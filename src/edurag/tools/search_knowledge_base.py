@@ -1,9 +1,9 @@
 from typing import Any
 
-from edurag.rag_qa.core.document_processor import Processor
+from edurag.rag_qa.core.document_processor import HybridProcessor
 from langchain.tools import tool
 
-_processor = Processor()
+_processor = HybridProcessor()
 
 
 @tool

@@ -6,6 +6,7 @@ from langchain_classic.storage import EncoderBackedStore
 from langchain_classic.retrievers import ParentDocumentRetriever
 from pathlib import Path
 from redis import Redis
+from pymilvus import RRFRanker, WeightedRanker
 import pickle
 from edurag.rag_qa.edu_document_loaders.doc_loader import DocLoader
 from edurag.rag_qa.edu_document_loaders.pdf_loader import PdfLoader
@@ -13,13 +14,12 @@ from edurag.rag_qa.edu_document_loaders.md_loader import MarkdownLoader
 from edurag.rag_qa.edu_document_loaders.txt_loader import TxtLoader
 from edurag.rag_qa.edu_text_splitter.parent_child_splitter import parent_child_splitter
 from edurag.rag_qa.models.embedding import embedding
-from edurag.rag_qa.vector_manage.milvus_store import get_milvus
+from edurag.rag_qa.vector_manage.milvus_store import get_milvus, get_hybrid_milvus
 from edurag.base.logger import logger
 
 
 class Processor:
-    MILVUS_URI = "./milvus_demo.db"
-    COLLECTION_NAME = "langchain_milvus_demo"
+    REDIS_NAMESPACE = "parent_docs"
 
     def __init__(self):
         self.loader = None
@@ -31,7 +31,9 @@ class Processor:
     def create_retriever(self):
         parent_splitter, child_splitter = parent_child_splitter()
 
-        ubderlying_redis_store = RedisStore(client=self.redis, namespace="parent_docs")
+        ubderlying_redis_store = RedisStore(
+            client=self.redis, namespace=self.REDIS_NAMESPACE
+        )
 
         store = EncoderBackedStore(
             store=ubderlying_redis_store,
@@ -70,9 +72,33 @@ class Processor:
         return self.retriever.invoke(key)
 
 
+class HybridProcessor(Processor):
+    REDIS_NAMESPACE = "parent_docs_hy"
+
+    def __init__(self):
+        super().__init__()
+        self.emb = get_hybrid_milvus()
+        self.retriever = self.create_retriever()
+
+    def query(self, key, ranker_type="rrf", k=5):
+        if ranker_type == "weighted":
+            ranker = WeightedRanker(0.7, 0.3)
+        else:
+            ranker = RRFRanker(k=60)
+
+        search_kwargs = {"k": k, "ranker": ranker}
+        logger.info(f"正在进行混合检索查询: {key}, 重排序策略: {ranker_type}")
+        return self.retriever.invoke(key, config={"configurable": search_kwargs})
+
+
 if __name__ == "__main__":
-    processor = Processor()
-    processor.store(file_path="plan.md")
-    result = processor.query("EduRAG项目背景是什么?")
+    # processor = Processor()
+    # processor.store(file_path="plan.md")
+    # result = processor.query("EduRAG项目背景是什么?")
+    # print(f"个数:{len(result)}")
+    # print(f"{result[-1]}")
+    hy = HybridProcessor()
+    hy.store("plan.md")
+    result = hy.query("EduRAG项目背景是什么?")
     print(f"个数:{len(result)}")
     print(f"{result[-1]}")
