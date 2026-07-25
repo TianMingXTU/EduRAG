@@ -1,6 +1,12 @@
-from langchain_core.stores import InMemoryStore
+import warnings
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+from langchain_community.storage import RedisStore
+from langchain_classic.storage import EncoderBackedStore
 from langchain_classic.retrievers import ParentDocumentRetriever
 from pathlib import Path
+from redis import Redis
+import pickle
 from edurag.rag_qa.edu_document_loaders.doc_loader import DocLoader
 from edurag.rag_qa.edu_document_loaders.pdf_loader import PdfLoader
 from edurag.rag_qa.edu_document_loaders.md_loader import MarkdownLoader
@@ -17,13 +23,22 @@ class Processor:
 
     def __init__(self):
         self.loader = None
+        self.redis = Redis.from_url(url="redis://localhost:6379")
         self.emb = embedding()
         self.vec = get_milvus()
         self.retriever = self.create_retriever()
 
     def create_retriever(self):
         parent_splitter, child_splitter = parent_child_splitter()
-        store = InMemoryStore()
+
+        ubderlying_redis_store = RedisStore(client=self.redis, namespace="parent_docs")
+
+        store = EncoderBackedStore(
+            store=ubderlying_redis_store,
+            key_encoder=lambda k: k,
+            value_serializer=pickle.dumps,
+            value_deserializer=pickle.loads,
+        )
 
         retriever = ParentDocumentRetriever(
             vectorstore=self.vec,
