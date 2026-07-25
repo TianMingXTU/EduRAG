@@ -29,7 +29,7 @@ class Config:
         self.llm_model = self._cfg.get("llm", "llm_model", fallback="")
         self.llm_api_key = self._cfg.get("llm", "llm_api_key", fallback="")
         self.llm_base_url = self._cfg.get("llm", "llm_base_url", fallback="")
-
+        # emb
         self.embedding_model = self._cfg.get(
             "embedding", "embedding_model", fallback=""
         )
@@ -40,12 +40,25 @@ class Config:
             "embedding", "embedding_base_url", fallback=""
         )
 
-        # 补上
         self.parent_chunk_size = self._cfg.getint(
             "retrieval", "parent_chunk_size", fallback=1200
         )
         self.child_chunk_size = self._cfg.getint(
             "retrieval", "child_chunk_size", fallback=300
+        )
+        # mysql
+        self.db_localhost = self._cfg.get("mysql", "localhost", fallback="")
+        self.db_port = self._cfg.get("mysql", "port", fallback=3306)
+        self.db_user = self._cfg.get("mysql", "user", fallback="")
+        self.db_password = self._cfg.get("mysql", "password", fallback="")
+        self.db_database = self._cfg.get("mysql", "database", fallback="")
+
+        # fqa
+        self.bm25_threshold_high = self._cfg.get(
+            "fqa", "bm25_threshold_high", fallback=10.0
+        )
+        self.bm25_threshold_low = self._cfg.get(
+            "fqa", "bm25_threshold_low", fallback=0.85
         )
 
     def reload(self) -> None:

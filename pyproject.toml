@@ -24,6 +24,11 @@ dependencies = [
     "opentelemetry-api>=1.28.0",
     "opentelemetry-sdk>=1.28.0",
     "langchain-redis>=0.2.5",
+    "aiomysql>=0.3.2",
+    "tortoise-orm>=1.1.7",
+    "cryptography>=49.0.0",
+    "jieba>=0.42.1",
+    "rank-bm25>=0.2.2",
 ]
 
 [tool.poetry]
