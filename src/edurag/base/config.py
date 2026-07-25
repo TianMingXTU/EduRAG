@@ -40,6 +40,14 @@ class Config:
             "embedding", "embedding_base_url", fallback=""
         )
 
+        # 补上
+        self.parent_chunk_size = self._cfg.getint(
+            "retrieval", "parent_chunk_size", fallback=1200
+        )
+        self.child_chunk_size = self._cfg.getint(
+            "retrieval", "child_chunk_size", fallback=300
+        )
+
     def reload(self) -> None:
         self._load()
 

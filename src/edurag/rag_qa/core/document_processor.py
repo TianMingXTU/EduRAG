@@ -4,32 +4,21 @@ from pathlib import Path
 from edurag.rag_qa.edu_document_loaders.doc_loader import DocLoader
 from edurag.rag_qa.edu_document_loaders.pdf_loader import PdfLoader
 from edurag.rag_qa.edu_document_loaders.md_loader import MarkdownLoader
-from edurag.rag_qa.edu_document_loaders.txt_loader import TextLoader
+from edurag.rag_qa.edu_document_loaders.txt_loader import TxtLoader
 from edurag.rag_qa.edu_text_splitter.parent_child_splitter import parent_child_splitter
 from edurag.rag_qa.models.embedding import embedding
-from edurag.rag_qa.vector_manage.milvus_store import MilvusVector
+from edurag.rag_qa.vector_manage.milvus_store import get_milvus
 from edurag.base.logger import logger
 
 
-class MilvusVector:
+class Processor:
     MILVUS_URI = "./milvus_demo.db"
     COLLECTION_NAME = "langchain_milvus_demo"
 
-    def __init__(self, file_path):
-        self.file_path = Path(file_path)
+    def __init__(self):
         self.loader = None
         self.emb = embedding()
-        self.vec = MilvusVector()
-        if self.file_path.suffix in (".pdf"):
-            self.loader = PdfLoader()
-        elif self.file_path.suffix in (".md"):
-            self.loader = MarkdownLoader()
-        elif self.file_path.suffix in (".txt"):
-            self.loader = TextLoader()
-        elif self.file_path.suffix in (".doc", "docx"):
-            self.loader = DocLoader()
-        else:
-            logger.error("传入错误的文档类型")
+        self.vec = get_milvus()
         self.retriever = self.create_retriever()
 
     def create_retriever(self):
@@ -41,12 +30,34 @@ class MilvusVector:
             docstore=store,
             child_splitter=child_splitter,
             parent_splitter=parent_splitter,
+            search_kwargs={"k": 5},
         )
         return retriever
 
-    def store(self):
-        documents = self.loader.load(self.file_path)
+    def store(self, file_path):
+        file_path = Path(file_path)
+        if file_path.suffix in (".pdf"):
+            self.loader = PdfLoader()
+        elif file_path.suffix in (".md"):
+            self.loader = MarkdownLoader()
+        elif file_path.suffix in (".txt"):
+            self.loader = TxtLoader()
+        elif file_path.suffix in (".doc", ".docx"):
+            self.loader = DocLoader()
+        else:
+            logger.error("传入错误的文档类型")
+        documents = self.loader.load(file_path)
         self.retriever.add_documents(documents)
+        logger.info("加载文档成功")
 
     def query(self, key):
+        logger.info(f"正在查询{key}")
         return self.retriever.invoke(key)
+
+
+if __name__ == "__main__":
+    processor = Processor()
+    processor.store(file_path="plan.md")
+    result = processor.query("EduRAG项目背景是什么?")
+    print(f"个数:{len(result)}")
+    print(f"{result[-1]}")
