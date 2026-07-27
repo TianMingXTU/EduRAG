@@ -3,7 +3,11 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 from langchain_community.storage import RedisStore
 from langchain_classic.storage import EncoderBackedStore
-from langchain_classic.retrievers import ParentDocumentRetriever
+from langchain_classic.retrievers import (
+    ParentDocumentRetriever,
+    ContextualCompressionRetriever,
+)
+from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
 from pathlib import Path
 from redis import Redis
 from pymilvus import RRFRanker, WeightedRanker
@@ -14,6 +18,7 @@ from edurag.rag_qa.edu_document_loaders.md_loader import MarkdownLoader
 from edurag.rag_qa.edu_document_loaders.txt_loader import TxtLoader
 from edurag.rag_qa.edu_text_splitter.parent_child_splitter import parent_child_splitter
 from edurag.rag_qa.models.embedding import embedding
+from edurag.rag_qa.models.rerank import rerank
 from edurag.rag_qa.vector_manage.milvus_store import get_milvus, get_hybrid_milvus
 from edurag.base.logger import logger
 
@@ -80,15 +85,24 @@ class HybridProcessor(Processor):
         self.emb = get_hybrid_milvus()
         self.retriever = self.create_retriever()
 
-    def query(self, key, ranker_type="rrf", k=5):
+    def query(self, key, ranker_type="rrf", k=30):
+        self.rerank = rerank()
         if ranker_type == "weighted":
-            ranker = WeightedRanker(0.7, 0.3)
+            search_param = {"weights": [0.7, 0.3]}
         else:
-            ranker = RRFRanker(k=60)
+            search_param = {"k": 60}
 
-        search_kwargs = {"k": k, "ranker": ranker}
+        self.retriever.search_kwargs = {
+            "k": k,
+            "param": search_param,
+        }
         logger.info(f"正在进行混合检索查询: {key}, 重排序策略: {ranker_type}")
-        return self.retriever.invoke(key, config={"configurable": search_kwargs})
+        compression = ContextualCompressionRetriever(
+            base_compressor=self.rerank, base_retriever=self.retriever
+        )
+        return compression.invoke(
+            key,
+        )
 
 
 if __name__ == "__main__":
@@ -98,7 +112,7 @@ if __name__ == "__main__":
     # print(f"个数:{len(result)}")
     # print(f"{result[-1]}")
     hy = HybridProcessor()
-    hy.store("plan.md")
-    result = hy.query("EduRAG项目背景是什么?")
+    hy.store("测试文档.md")
+    result = hy.query("湘潭大学2026年7月发展情况详细说明?")
     print(f"个数:{len(result)}")
     print(f"{result[-1]}")

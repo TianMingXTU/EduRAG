@@ -1,6 +1,6 @@
 # src/edurag/mysql_qa/retrieval/bm25_search.py
 import asyncio
-from rank_bm25 import BM25Okapi
+from rank_bm25 import BM25L
 from edurag.mysql_qa.db.mysql_client import MysqlClient
 from edurag.mysql_qa.cache.redis_client import redis_client
 from edurag.mysql_qa.utils.preprocess import tokenize
@@ -22,7 +22,7 @@ class BM25Search:
 
         self.qa_list = await _mysqlclient.query_all_fqa()
         corpus = [tokenize(item["question"]) for item in self.qa_list]
-        self.bm25 = BM25Okapi(corpus)
+        self.bm25 = BM25L(corpus)
         logger.info(f"BM25 索引构建完成，文档数: {len(self.qa_list)}")
 
     async def query(self, question: str) -> tuple[str | None, str | None, float | None]:

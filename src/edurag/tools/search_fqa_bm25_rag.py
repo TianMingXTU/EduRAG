@@ -2,7 +2,13 @@ from langchain.tools import tool
 from edurag.mysql_qa.retrieval.bm25_search import BM25Search
 
 _bm25_search = BM25Search()
-_bm25_search.build_index()
+
+
+def _ensure_index():
+    import asyncio
+
+    if _bm25_search.bm25 is None:
+        asyncio.run(_bm25_search.build_index())
 
 
 @tool
@@ -25,6 +31,7 @@ def search_fqa_bm25_rag(
         if the search fails or yields no results.
     """
     try:
+        _ensure_index()
         cleaned_query = query.strip()
         if not cleaned_query:
             return (

@@ -2,9 +2,10 @@ from redis import Redis
 import hashlib
 import json
 from datetime import datetime
+from edurag.mysql_qa.utils.preprocess import tokenize
 
 
-class RedisClent:
+class RedisClient:
     _instance = None
     KEY_PREFIX = "fqa:"
     DEFAULT_TTL = 3600  # 秒
@@ -19,7 +20,10 @@ class RedisClent:
         self._redis = Redis.from_url(url)
 
     def _make_key(self, question):
-        md5 = hashlib.md5(question.strip().encode("utf-8")).hexdigest()
+        tokens = tokenize(question)
+        tokens.sort()
+        normalized = " ".join(tokens)
+        md5 = hashlib.md5(normalized.strip().encode("utf-8")).hexdigest()
         return f"{self.KEY_PREFIX}{md5}"
 
     def set_answer(
@@ -52,4 +56,4 @@ class RedisClent:
         self._redis.close()
 
 
-redis_client = RedisClent()
+redis_client = RedisClient()

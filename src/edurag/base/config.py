@@ -46,8 +46,13 @@ class Config:
         self.child_chunk_size = self._cfg.getint(
             "retrieval", "child_chunk_size", fallback=300
         )
+        # rerank
+        self.rerank_model = self._cfg.get("rerank", "rerank_model", fallback="")
+        self.rerank_api_key = self._cfg.get("rerank", "rerank_api_key", fallback="")
+        self.rerank_base_url = self._cfg.get("rerank", "rerank_base_url", fallback="")
+
         # mysql
-        self.db_localhost = self._cfg.get("mysql", "localhost", fallback="")
+        self.db_localhost = self._cfg.get("mysql", "host", fallback="127.0.0.1")
         self.db_port = self._cfg.get("mysql", "port", fallback=3306)
         self.db_user = self._cfg.get("mysql", "user", fallback="")
         self.db_password = self._cfg.get("mysql", "password", fallback="")

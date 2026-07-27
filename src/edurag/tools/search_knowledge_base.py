@@ -1,37 +1,23 @@
 from typing import Any
-
-from edurag.rag_qa.core.document_processor import HybridProcessor
 from langchain.tools import tool
-
-_processor = HybridProcessor()
+from edurag.rag_qa.core.rag_system import process
 
 
 @tool
-def search_knowledge_base(query: str) -> list[dict[str, Any]] | str:
-    """Searches the enterprise knowledge base for relevant documents based on a query.
+def search_knowledge_base(query: str) -> str:
+    """Searches the enterprise knowledge base with automatic strategy selection.
 
-    This tool performs dense vector similarity search (and parent-child chunking)
-    against the configured knowledge base. Use this tool whenever you need to
-    retrieve domain-specific facts, architecture specs, or corporate policies.
-
-    Args:
-        query (str): The search query or keywords. Should be a high-density,
-            specific semantic query (e.g., "Nacos configuration refresh steps").
-
-    Returns:
-        list[dict[str, Any]] | str: A list of retrieved document objects containing
-        page contents and metadata, or a text summary of search results.
-
-    Raises:
-        RuntimeError: If an error occurs during the document processor query execution.
+    Analyzes the query, selects the best retrieval strategy (direct/hyde/subquery/backtrack),
+    performs hybrid dense+sparse search, and synthesizes the final answer.
     """
     try:
-        cleaned_query = query.strip()
-        if not cleaned_query:
+        cleaned = query.strip()
+        if not cleaned:
             return "Search query cannot be empty."
-
-        result = _processor.query(cleaned_query)
-        return result
-
+        result = process(cleaned)
+        strategy_info = (
+            f"[Strategy: {result['strategy']}] " if result["strategy"] else ""
+        )
+        return f"{strategy_info}{result['answer']}"
     except Exception as e:
-        return f"Failed to search knowledge base due to error: {str(e)}"
+        return f"Search failed: {str(e)}"

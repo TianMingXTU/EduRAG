@@ -1,5 +1,7 @@
 import asyncio
 from langchain.agents import create_agent
+from langchain.agents.middleware import ToolRetryMiddleware, ModelRetryMiddleware
+from langgraph.checkpoint.memory import MemorySaver
 from edurag.agent.llm import get_llm
 from edurag.agent.prompt import SYSTEM_PROMPT
 from edurag.tools.search_knowledge_base import search_knowledge_base
@@ -9,7 +11,15 @@ from edurag.mysql_qa.cache.redis_client import redis_client
 
 def creat_react_agent():
     return create_agent(
-        model=get_llm(), tools=[search_knowledge_base], system_prompt=SYSTEM_PROMPT
+        model=get_llm(),
+        tools=[search_knowledge_base],
+        system_prompt=SYSTEM_PROMPT,
+        middleware=[
+            ToolRetryMiddleware(max_retries=2),
+            ModelRetryMiddleware(max_retries=2),
+        ],
+        checkpointer=MemorySaver(),
+        name="edurag_agent",
     )
 
 
@@ -17,13 +27,14 @@ async def main():
     _bm25_search = BM25Search()
     await _bm25_search.build_index()
     agent = creat_react_agent()
-    query = "EduRag是什么"
+    query = "湘潭大学2026年7月发展情况详细说明?"
     result = await _bm25_search.query(query)
     if result[0]:
         print(result[0])
     else:
         message = {"messages": [{"role": "user", "content": query}]}
-        result = agent.invoke(message)
+        config = {"configurable": {"thread_id": "default_001"}}
+        result = agent.invoke(message, config=config)
         print(result)
     redis_client.close()
     await _mysqlclient.close()
