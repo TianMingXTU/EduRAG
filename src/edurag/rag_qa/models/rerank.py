@@ -1,16 +1,20 @@
-from edurag.base.config import config
+from edurag.config.settings import settings
 from httpx import Client
 from langchain_core.documents import Document
-from langchain_classic.retrievers.document_compressors.base import (
-    BaseDocumentCompressor,
-)
 
 
-class SiliconFlowRerank(BaseDocumentCompressor):
-    model: str
-    api_key: str
-    top_n: int = 3
-    base_url: str = config.rerank_base_url or "https://api.siliconflow.cn/v1/rerank"
+class SiliconFlowRerank:
+    def __init__(
+        self,
+        model: str,
+        api_key: str,
+        top_n: int = 3,
+        base_url: str | None = None,
+    ):
+        self.model = model
+        self.api_key = api_key
+        self.top_n = top_n
+        self.base_url = base_url or "https://api.siliconflow.cn/v1/rerank"
 
     def compress_documents(self, documents, query, callbacks=None) -> list[Document]:
         docs_text = [d.page_content for d in documents]
@@ -28,10 +32,13 @@ class SiliconFlowRerank(BaseDocumentCompressor):
         indices = [r["index"] for r in resp.json()["results"]]
         return [documents[i] for i in indices]
 
+    def __call__(self, documents, query, callbacks=None) -> list[Document]:
+        return self.compress_documents(documents, query, callbacks)
+
 
 def rerank():
     return SiliconFlowRerank(
-        model=config.rerank_model,
-        api_key=config.rerank_api_key,
+        model=settings.rerank_model,
+        api_key=settings.rerank_api_key,
         top_n=3,
     )

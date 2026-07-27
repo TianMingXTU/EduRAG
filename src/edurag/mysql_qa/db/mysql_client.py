@@ -2,8 +2,8 @@ import asyncio
 from datetime import datetime
 from tortoise import Tortoise, fields
 from edurag.mysql_qa.db.models import FQAQAPair
-from edurag.base.config import config
-from edurag.base.logger import logger
+from edurag.config.settings import config
+from edurag.config.logging import logger
 
 
 class MysqlClient:

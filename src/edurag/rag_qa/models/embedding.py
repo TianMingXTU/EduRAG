@@ -1,5 +1,5 @@
 from langchain_openai import OpenAIEmbeddings
-from edurag.base.config import config
+from edurag.config.settings import config
 
 
 def embedding():

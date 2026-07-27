@@ -1,300 +1,252 @@
-# EduRAG — 企业级智能教育问答系统
+## README 更新
 
-基于 **LangGraph + LangChain + Milvus** 构建的双层 RAG 问答系统，面向 IT 教育培训场景，融合高频问答（FQA）与深度检索（RAG），实现精准、可溯源、低幻觉的智能答疑。
+### 完整 README (`README.md`)
 
----
+# EduRAG — Agentic RAG 系统
 
-## Architectural Overview
-
-```
-用户问题
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│         FQA System（高频问答匹配层）        │
-│  MySQL + jieba 分词 + BM25 相似度检索       │
-│  + Redis 缓存                             │
-│                                           │
-│  相似度 ≥ 阈值 → 直接返回缓存答案            │
-│  相似度 < 阈值 → 下放 RAG System            │
-└─────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│      RAG System（深度语义检索层）           │
-│                                           │
-│  ├─ 1. Query Classification               │
-│  │  ┌ 通用知识 → 直答 LLM                 │
-│  │  └ 专业咨询 → 进入检索流程              │
-│  │                                         │
-│  ├─ 2. Strategy Selection (LLM-driven)     │
-│  │  ┌ DirectRetrieval   — 明确查询         │
-│  │  ├ HyDE              — 抽象问题         │
-│  │  ├ SubQuery          — 复杂查询         │
-│  │  └ Backtrack         — 冗余问题         │
-│  │                                         │
-│  ├─ 3. Query Optimization (LLM)            │
-│  │  → 重写 / 扩展 / 分解用户问题           │
-│  │                                         │
-│  ├─ 4. Hybrid Retrieval                    │
-│  │  ┌ Dense  (Milvus + Embedding)          │
-│  │  ├ Sparse (BM25 + jieba)                │
-│  │  └ RRF Ranker 融合排序                   │
-│  │                                         │
-│  ├─ 5. Prompt Assembly                     │
-│  │  → query + context + history            │
-│  │                                         │
-│  └─ 6. LLM Generation                      │
-│     → Final Answer / 人工引导               │
-└─────────────────────────────────────────┘
-```
+基于 **LangGraph + LangChain + Milvus** 构建的 **Agentic RAG (智能体化 RAG)** 系统，面向教育与工业场景，实现"会思考、可规划、能溯源、可信赖"的智能问答。
 
 ---
 
-## Innovation Highlights
-
-### 1. LangGraph ReAct Agent — 超越传统 Chain
-
-传统 RAG（含本教材基础版）使用固定的 `prompt | llm` 链式调用，无法自主判断是否需要检索。
-
-本项目采用 **LangGraph ReAct Agent** 作为核心引擎：
-
-| 维度 | 教材基础版 | 本项目 |
-|------|-----------|--------|
-| 控制流 | 固定 Chain | Agent 自主决策 |
-| 检索时机 | 每次都检索 | 按需调用工具 |
-| 查询优化 | 手动编写 | Agent 自动重写 |
-| 多轮补充 | 不支援 | 自动二次检索 |
-| 状态管理 | 无 | MemorySaver 持久化 |
-
-Agent 的工作流：
+## 架构总览
 
 ```
-用户输入
-  │
-  ├─ 是否需要知识库？ ──→ 否 ──→ LLM 直接回答
-  │
-  └─ 是 ──→ 调用 query_rag 工具
-              │
-              ├─ query_rag(key: str)
-              │    └─ Hybrid Search → 返回文档片段
-              │
-              └─ 结果充分？──→ 否 ──→ 重新优化关键词，二次检索
-                                └─ 是 ──→ LLM 整合生成
-```
-
-### 2. Hybrid Search with RRF Reranking
-
-单一向量检索的局限：语义相似 ≠ 答案相关。本项目实现 **稠密 + 稀疏融合检索**：
-
-```
-Query
-  ├──→ Embedding Model ──→ Dense Vector ──→ Milvus ANN Search
-  │                                              │
-  └──→ jieba 分词 ──→ BM25 Sparse Vector ──→ Milvus Keyword Search
-                                                   │
-                                              RRF Reciprocal Rank Fusion
-                                                   │
-                                              Final Ranked Results
-```
-
-- **Dense**：Qwen3-Embedding / bge-m3，捕获语义
-- **Sparse**：BM25 + jieba 分词，捕获关键词精确匹配
-- **Rerank**：RRF（Reciprocal Rank Fusion）综合排序
-
-### 3. Parent-Child Chunking 策略
-
-```
-原始文档
-    │
-    ▼
-┌────────────────┐
-│  Parent Chunks │  ← chunk_size=1200, overlap=50
-│  (完整上下文)   │
-└───────┬────────┘
-        │ 继续切分
-        ▼
-┌────────────────┐
-│  Child Chunks  │  ← chunk_size=300, overlap=50
-│  (精确片段)     │
-└───────┬────────┘
-        │ 向量化 → Milvus
-        ▼
-   检索子块 → 返回父块全文 → 兼顾精确度与上下文完整性
-```
-
-### 4. LLM-Driven 多策略选择
-
-不硬编码单一检索策略，而是让 **LLM 动态决策** 最佳策略：
+用户查询
+│
+▼
+┌───────────────────────────────────────────────────┐
+│ Layer 1：Adaptive Router (自适应路由) │
+│ LLM 分类 → general_knowledge / professional │
+│ 简单查询 → 走单 pass 直答 (< 50ms) │
+│ 复杂查询 → 走 Agentic RAG 循环 │
+└─────────────────────────────────┬─────────────────┘
+│
+▼
+┌───────────────────────────────────────────────────┐
+│ Layer 2：Agentic RAG Orchestration (LangGraph) │
+│ │
+│ ┌─────────┐ ┌──────────┐ ┌──────────────┐ │
+│ │ Plan │──▶│Retrieve │──▶│ Evaluate │ │
+│ │ (规划) │ │ (检索) │ │ (置信度评估) │ │
+│ └─────────┘ └──────────┘ └──────┬───────┘ │
+│ │ │
+│ confidence ≥ 0.8? │ │
+│ ┌───────────────────────┤ │
+│ YES ▼ NO ▼ │
+│ ┌──────────────┐ ┌─────────────┐ ┌────┴─────┐│
+│ │ Synthesize │ │ Self-Critique │ │ Re-Retrieve││
+│ │ (答案合成) │◀─│ (自纠错/重试) │──▶│ (重新检索) ││
+│ └──────┬───────┘ └─────────────┘ └──────────┘│
+│ │ │
+│ ▼ │
+│ ┌──────────────┐ ┌────────────────────────────┐│
+│ │ Output │ │ Trace Log (LangSmith/OTel) ││
+│ │ + Sources │ └────────────────────────────┘│
+│ └──────────────┘ │
+└───────────────────────────────────────────────────┘
+│
+▼
+┌───────────────────────────────────────────────────┐
+│ Layer 3：数据存储层 │
+│ Milvus (向量+BM25融合) │ MySQL+BM25 (FQA) │
+│ Redis (缓存) │ Files (PDF/MD/TXT/DOCX)│
+└───────────────────────────────────────────────────┘
 
 ```
-问题类型          LLM 判断         执行策略
-─────────────────────────────────────────────
-"Python 列表推导式语法"   →  明确  →  DirectRetrieval
-"怎么优化代码性能"        →  抽象  →  HyDE（生成假设答案再检索）
-"Java 和 Python 在并发   →  复杂  →  SubQuery（拆解为多个子问题）
- 编程上的区别是什么"
-"嗯…就是那个…我之前      →  冗余  →  Backtrack（提取核心后检索）
- 看到的那个功能"
-```
-
-### 5. Two-Layer Fallback Architecture
-
-```
-User Query
-    │
-    ▼
-┌──────────────┐
-│  FQA Layer   │──→ Match Found (score ≥ threshold) ──→ Direct Answer
-│  MySQL+BM25  │                                           (0.1s)
-│  Redis Cache │
-└──────┬───────┘
-       │ No good match
-       ▼
-┌──────────────┐
-│  RAG Layer   │──→ Hybrid Search → LLM Generation
-│  Milvus+LLM  │                                           (3-10s)
-└──────────────┘
-```
-
-- **FQA** 覆盖高频标准问答，毫秒级响应，零 LLM 成本
-- **RAG** 处理长尾/复杂问题，保证回答质量
-- **Redis** 缓存热点查询，避免重复计算
-
-### 6. 工程化基础设施
-
-| 模块 | 实现 |
-|------|------|
-| **配置管理** | `configparser` + `os.getenv` 双覆盖，Docker 友好 |
-| **日志系统** | 控制台 + 文件双输出，支持 DEBUG/INFO/WARNING/ERROR 分级 |
-| **多格式文档** | PDF / TXT / DOCX / Markdown 统一加载接口 |
-| **API 服务** | FastAPI + uvicorn，生产级 REST 接口 |
-| **容器化部署** | Docker Compose 编排 Milvus + Redis + MySQL + App |
-
-### 7. RAGAS 评估体系
-
-集成 RAGAS 框架，量化评估 RAG 各环节质量：
-
-| 指标 | 含义 |
-|------|------|
-| **Faithfulness** | 回答是否忠实于检索上下文 |
-| **Answer Relevancy** | 回答与问题的相关性 |
-| **Context Precision** | 检索结果的精确率 |
-| **Context Recall** | 检索结果的召回率 |
 
 ---
 
-## Project Structure
+## 核心创新
+
+### 1. Agentic RAG 状态机
+
+传统 RAG 是单次检索 + 生成的 **流水线**，本系统是 **状态机**，由 LangGraph `StateGraph` 驱动：
+
+| 阶段              | 职责                                 | 创新点                               |
+| ----------------- | ------------------------------------ | ------------------------------------ |
+| **Plan**          | LLM 分析查询类型 + 选择检索策略      | LLM 驱动的策略选择，非硬编码         |
+| **Retrieve**      | 多轮迭代检索 (最多 `max_iterations`) | 支持 subquery 分解 + 混合检索        |
+| **Evaluate**      | LLM-as-Judge 评估检索质量            | 置信度量化，非启发式阈值             |
+| **Self-Critique** | 置信度不足时自动重试或请求人工介入   | Self-RAG 模式，源自 arXiv 2310.11511 |
+| **Synthesize**    | 答案合成 + 精确溯源                  | 每个结论标注来源文档                 |
+
+### 2. 自适应路由
 
 ```
+
+简单查询 ("GIL 是什么") → FQA 层的 MySQL+BM25 单 pass (< 50ms, 零 LLM 成本)
+复杂查询 ("Java 和 Python 在并发编程上的区别") → Agentic RAG 完整循环
+
+```
+
+### 3. 可观测性
+
+- **LangSmith Tracing**：每个 LLM 调用、工具调用、检索步骤完整 trace，可视化调试
+- **OpenTelemetry**：与 Prometheus/Jaeger 集成，指标可监控
+- **TraceContext**：每次查询唯一 trace_id，所有日志关联
+
+### 4. 精准溯源
+
+答案中的每个关键结论附带 `[Source N]` 引用标记，可追溯到具体文档片段。
+
+---
+
+## 技术选型
+
+| 组件           | 选型                               | 为什么                                                |
+| -------------- | ---------------------------------- | ----------------------------------------------------- |
+| **Agent 框架** | LangGraph (StateGraph)             | 2026 年取代 `create_agent` 的标准，可控 state machine |
+| **LLM**        | DeepSeek-V3.2 / Qwen (SiliconFlow) | 低成本 + 高质量                                       |
+| **向量 DB**    | Milvus (Lite/SQLite 本地或 Docker) | 内置 BM25 稀疏向量，单库融合检索                      |
+| **FQA**        | MySQL + jieba + BM25               | 毫秒级高频问答                                        |
+| **缓存**       | Redis (async)                      | 异步非阻塞                                            |
+| **评估**       | RAGAS + LLM-as-Judge               | 双保险，自动 + 人工                                   |
+| **可观测**     | LangSmith + OpenTelemetry          | 端到端 trace                                          |
+| **配置**       | Pydantic Settings + .env           | 类型安全 + 密钥分离                                   |
+| **文档加载**   | LangChain document loaders         | 支持 PDF/MD/TXT/DOCX                                  |
+| **分块**       | Parent-Child RecursiveCharacter    | 中文友好，保留上下文                                  |
+| **API**        | FastAPI + uvicorn                  | 生产级异步                                            |
+| **部署**       | Docker Compose                     | 一键启动全部依赖                                      |
+
+---
+
+## 项目结构
+
+```
+
 src/edurag/
-├── base/                       # 基础设施层
-│   ├── config.py               # ConfigParser + 环境变量覆盖
-│   └── logger.py               # 双输出日志
-├── agent/                      # LangGraph Agent 层
-│   ├── llm.py                  # ReAct Agent 创建
-│   └── prompt.py               # System Prompt（SOP 驱动）
-├── rag_qa/                     # RAG 核心层
-│   ├── core/
-│   │   ├── document_processor.py   # 父子分块
-│   │   ├── vector_store.py         # Milvus + BM25 混合检索
-│   │   ├── prompts.py              # Prompt 模板
-│   │   ├── query_classifier.py     # 查询分类（LLM/BERT）
-│   │   ├── strategy_selector.py    # 4 种策略选择
-│   │   └── rag_system.py           # RAG 编排
-│   ├── edu_document_loaders/
-│   ├── edu_text_spliter/
-│   ├── models/
-│   └── rag_assesment/              # RAGAS 评估
-├── tools/                       # LangChain 工具
-│   └── query_rag.py             # 知识库检索工具
-├── mysql_qa/                    # FQA 系统
-│   ├── db/mysql_client.py
-│   ├── cache/redis_client.py
-│   ├── retrieval/bm25_search.py
-│   └── utils/preprocess.py
-├── main.py                     # CLI 入口
-└── app.py                      # FastAPI 服务
+├── config/ # 配置层
+│ ├── **init**.py
+│ ├── settings.py # Pydantic BaseSettings + .env 双源加载
+│ └── logging.py # Loguru 双输出日志配置
+├── storage/ # 数据访问层
+│ ├── **init**.py
+│ ├── mysql.py # Tortoise ORM 统一入口
+│ ├── redis.py # async Redis 客户端
+│ └── vector.py # Milvus 客户端工厂
+├── document/ # 文档处理层
+│ ├── **init**.py
+│ ├── loader.py # 统一文档加载器 (动态导入)
+│ ├── splitter.py # Parent-Child 分块
+│ └── processor.py # 统一处理管道
+├── agent/ # Agent 层 (LangGraph)
+│ ├── **init**.py
+│ ├── graph.py # StateGraph 状态机定义
+│ ├── nodes.py # Plan/Retrieve/Evaluate/Synthesize 节点
+│ ├── state.py # TypedDict 状态定义
+│ └── orchestrator.py # 同步/流式执行入口
+├── evaluate/ # 评估层
+│ ├── **init**.py
+│ └── pipeline.py # RagEvaluator + RAGAS + LLM-as-Judge
+├── observability/ # 可观测性层 (Phase 3 新增)
+│ ├── **init**.py
+│ └── tracing.py # LangSmith + OpenTelemetry 初始化
+├── prompt/ # Prompt 管理层
+│ ├── **init**.py
+│ └── templates.py # 所有 ChatPromptTemplate 集中管理
+├── tools/ # 工具注册层
+│ ├── **init**.py
+│ └── registry.py # ToolRegistry + 工具注册
+└── main.py # CLI 入口
+
 ```
 
 ---
 
-## Tech Stack
+## 快速开始
 
-| Category | Choice |
-|----------|--------|
-| LLM | DeepSeek-V3.2 / Qwen（SiliconFlow API） |
-| Agent Framework | LangGraph ReAct Agent |
-| Vector Database | Milvus（Docker） |
-| Embedding | Qwen3-Embedding / bge-m3 |
-| Hybrid Search | Dense + BM25 Sparse + RRF |
-| FQA Storage | MySQL + Redis Cache |
-| Tokenization | jieba |
-| API Layer | FastAPI + uvicorn |
-| Deployment | Docker Compose |
-| Evaluation | RAGAS |
-| Python Env | uv / poetry, Python >= 3.10 |
+### 1. 配置
 
----
+```bash
+cp .env.example .env
+# 编辑 .env 填入 API 密钥
+# LLM_API_KEY, EMBEDDING_API_KEY, RE_rank_API_KEY
+```
 
-## Quick Start
-
-### Prerequisites
-
-- Python >= 3.10
-- Docker & Docker Compose
-- SiliconFlow / DashScope API Key
-
-### Start Middleware
+### 2. 启动依赖
 
 ```bash
 docker compose up -d
 ```
 
-### Install
+### 3. 安装
 
 ```bash
 pip install -r requirements.txt
+# 或
+uv sync
 ```
 
-### Configure
+### 4. 运行
 
 ```bash
-cp config.ini.example config.ini
-# edit your API keys
-# or via env:
-export LLM_API_KEY=sk-xxx
-export EMBEDDING_API_KEY=sk-xxx
+# CLI 模式
+python -m edurag.main --query "Python 列表推导式语法是什么？"
+
+# 交互式会话
+python -m edurag.main --interactive
+
+# API 服务
+python -m edurag.app --host 0.0.0.0 --port 8000
 ```
 
-## Build Knowledge Base
+### 5. 评估
 
 ```bash
-python -m edurag.rag_qa.core.vector_store
+# 运行 RAGAS 评估
+python -m edurag.evaluate --golden-set tests/eval/queries.jsonl
+
+# 查看评估报告
+python -m edurag.evaluate --report
 ```
 
-### Run
+---
 
-```bash
-# CLI Mode
-python -m edurag.main
+## 评估指标 (RAGAS)
 
-# API Service
-python -m edurag.app
-```
+| 指标                  | 含义                     | 目标  |
+| --------------------- | ------------------------ | ----- |
+| **Faithfulness**      | 回答是否忠实于检索上下文 | ≥ 0.8 |
+| **Answer Relevancy**  | 回答与查询的相关性       | ≥ 0.7 |
+| **Context Precision** | 检索结果的精确率         | ≥ 0.7 |
+| **Context Recall**    | 检索结果的召回率         | ≥ 0.7 |
+| **Confidence**        | LLM-as-Judge 置信度      | ≥ 0.7 |
 
 ---
 
 ## Roadmap
 
 - [x] Project scaffold & config management
-- [x] Document loader with parent-child chunking
-- [x] Milvus hybrid vector store
-- [x] LangGraph ReAct Agent with query_rag tool
-- [ ] Query classifier (LLM-based)
-- [ ] 4-strategy selector & query optimizer
-- [ ] FQA system (MySQL + BM25 + Redis)
-- [ ] Dual-layer fusion (FQA → RAG)
-- [ ] FastAPI with streaming output
-- [ ] RAGAS evaluation pipeline
+- [x] Pydantic Settings + .env 双源配置
+- [x] Document loader + parent-child splitter
+- [x] Milvus + BM25 hybrid vector store
+- [x] Config layer + Storage layer + Document layer
+- [x] LangGraph Agentic RAG state machine
+- [x] Adaptive routing (FQA → RAG)
+- [ ] Multi-Tool Retrieval Router (MCP support)
+- [ ] Long-term memory (Redis + vectorized history)
+- [ ] RAGAS + LLM-as-Judge evaluation pipeline (Phase 3)
+- [ ] LangSmith + OpenTelemetry observability (Phase 3)
+- [ ] Human-in-the-loop approval workflow
+- [ ] Audit logging + rollback support
 - [ ] Docker production deployment
+
+### `requirements.txt` 增量 (Phase 3 新增)
+
+```
+ragas>=0.4.3
+langsmith>=0.10.9
+opentelemetry-api>=1.28.0
+opentelemetry-sdk>=1.28.0
+
+```
+
+这些依赖已在 `pyproject.toml` 中声明，Phase 3 将其正式接入使用。
+
+---
+
+Phase 3 完成的工作：
+
+1. **评估层** — `RagEvaluator` 支持 RAGAS (自动) 和 LLM-as-Judge (降级) 两种评估模式，结果可硬性 gate CI/CD
+2. **可观测性** — `init_tracing()` 自动激活 LangSmith / OpenTelemetry，`TraceContext` 提供每次查询的唯一 trace_id
+3. **README** — 完整重写，包含架构图、核心创新、API 选型表、评估指标、Roadmap
