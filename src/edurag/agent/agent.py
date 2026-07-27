@@ -13,12 +13,12 @@ def creat_react_agent():
     )
 
 
-if __name__ == "__main__":
+async def main():
     _bm25_search = BM25Search()
-    _bm25_search.build_index()
+    await _bm25_search.build_index()
     agent = creat_react_agent()
-    query = "简述 TCP 三次握手的过程"
-    result = _bm25_search.query(query)
+    query = "EduRag是什么"
+    result = await _bm25_search.query(query)
     if result[0]:
         print(result[0])
     else:
@@ -26,4 +26,8 @@ if __name__ == "__main__":
         result = agent.invoke(message)
         print(result)
     redis_client.close()
-    asyncio.run(_mysqlclient.close())
+    await _mysqlclient.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

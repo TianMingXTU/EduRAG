@@ -38,7 +38,8 @@ class RedisClent:
 
     def get(self, question):
         if self.exists:
-            return self._redis.getex(self._make_key(question))
+            result = self._redis.getex(self._make_key(question))
+            return json.loads(result)
         return f"{question} key not exists"
 
     def exists(self, question: str) -> bool:

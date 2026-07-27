@@ -17,21 +17,21 @@ class BM25Search:
         self.threshold_high = float(config.bm25_threshold_high)
         self.threshold_low = float(config.bm25_threshold_low)
 
-    def build_index(self):
+    async def build_index(self):
         """离线构建：从 MySQL 加载全量数据，分词后建 BM25 索引"""
 
-        self.qa_list = asyncio.run(_mysqlclient.query_all_fqa())
+        self.qa_list = await _mysqlclient.query_all_fqa()
         corpus = [tokenize(item["question"]) for item in self.qa_list]
         self.bm25 = BM25Okapi(corpus)
         logger.info(f"BM25 索引构建完成，文档数: {len(self.qa_list)}")
 
-    def query(self, question: str) -> tuple[str | None, str | None, float | None]:
+    async def query(self, question: str) -> tuple[str | None, str | None, float | None]:
         """
         返回: (answer, source, score)
         source: "fqa_high" / "fqa_low" / "rag" / "unanswerable" / None
         """
         if not self.bm25:
-            self.build_index()
+            await self.build_index()
 
         tokens = tokenize(question)
         if not tokens:
